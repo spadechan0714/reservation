@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KTV 預約系統 - 雲端只讀視圖</title>
+    <style>
+        body { font-family: 'Microsoft JhengHei', 'PingFang HK', sans-serif; background: #f0f2f5; padding: 20px; margin: 0; }
+        h1 { text-align: center; color: #2c3e50; margin-bottom: 10px; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header-info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; color: #7f8c8d; font-size: 14px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
+        th { background: #2c3e50; color: white; font-weight: bold; position: sticky; top: 0; }
+        tr:hover { background: #f8f9fa; }
+        .status-checked_in { color: #2ecc71; font-weight: bold; }
+        .status-confirmed { color: #2ecc71; }
+        .status-reserved { color: #f39c12; font-weight: bold; }
+        .status-cancelled { color: #e74c3c; text-decoration: line-through; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+        .badge-source { background: #e8f4fd; color: #3498db; }
+        .loading { text-align: center; padding: 50px; color: #7f8c8d; font-size: 18px; }
+        .error { text-align: center; padding: 50px; color: #e74c3c; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 KTV 預約系統 - 雲端只讀視圖</h1>
+        <div class="header-info">
+            <span id="update-time">載入中...</span>
+            <span>此頁面為唯讀檢視，資料由系統自動上傳</span>
+        </div>
+        <div id="loading" class="loading">正在載入預約資料...</div>
+        <div id="content" style="display:none; overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>日期</th>
+                        <th>房間</th>
+                        <th>時間</th>
+                        <th>客戶</th>
+                        <th>電話</th>
+                        <th>人數</th>
+                        <th>職員</th>
+                        <th>來源</th>
+                        <th>狀態</th>
+                        <th>備註</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body"></tbody>
+            </table>
+        </div>
+    </div>
+    <script>
+        fetch('ktv_data.json')
+            .then(response => {
+                if (!response.ok) throw new Error('無法讀取資料檔案');
+                return response.json();
+            })
+            .then(data => {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('content').style.display = 'block';
+                
+                const updateTime = data._meta && data._meta.export_time ? data._meta.export_time : '未知';
+                document.getElementById('update-time').textContent = '最後更新: ' + updateTime;
+                
+                const tbody = document.getElementById('table-body');
+                const reservations = data.reservations || [];
+                const rooms = data._rooms || [];
+                
+                const roomMap = {};
+                rooms.forEach(r => roomMap[r.id] = r.name);
+                
+                // 過濾掉已取消的預約，或者可以選擇顯示
+                const activeReservations = reservations.filter(r => r.status !== 'cancelled');
+                
+                if (activeReservations.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px;">暫無預約記錄</td></tr>';
+                    return;
+                }
+                
+                activeReservations.sort((a, b) => {
+                    if (a.date !== b.date) return a.date.localeCompare(b.date);
+                    return a.start_time.localeCompare(b.start_time);
+                });
+                
+                activeReservations.forEach(res => {
+                    const tr = document.createElement('tr');
+                    
+                    const statusText = {
+                        'checked_in': '✅ 已到店',
+                        'confirmed': '✓ 已確認',
+                        'reserved': '📝 已預約'
+                    }[res.status] || res.status;
+                    
+                    const statusClass = 'status-' + res.status;
+                    const sourceDisplay = res.customer_source || '臨時到訪';
+                    
+                    tr.innerHTML = `
+                        <td>${res.date || ''}</td>
+                        <td><strong>${roomMap[res.room_id] || '房間' + res.room_id}</strong></td>
+                        <td>${res.start_time || ''} - ${res.end_time || ''}</td>
+                        <td>${res.customer_name || ''}</td>
+                        <td>${res.phone || '-'}</td>
+                        <td>${res.people || 0}</td>
+                        <td>${res.staff || ''}</td>
+                        <td><span class="badge badge-source">${sourceDisplay}</span></td>
+                        <td class="${statusClass}">${statusText}</td>
+                        <td>${res.notes || '-'}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            })
+            .catch(err => {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('content').innerHTML = '<div class="error">載入失敗: ' + err.message + '<br>請確認 ktv_data.json 是否存在於同一目錄。</div>';
+            });
+    </script>
+</body>
+</html>
